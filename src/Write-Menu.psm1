@@ -2,6 +2,7 @@
     The MIT License (MIT)
 
     Copyright (c) 2016 QuietusPlus
+    Copyright (c) 2019 Travis Plunk
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -144,6 +145,9 @@ function Write-Menu {
     # Save initial colours
     $script:colorForeground = [System.Console]::ForegroundColor
     $script:colorBackground = [System.Console]::BackgroundColor
+    $script:psReadLineOptions = Get-PSReadLineOption
+    $script:defaultTokenColor = $script:psReadLineOptions.DefaultTokenColor
+    $script:emphasisColor = $script:psReadLineOptions.EmphasisColor
 
     <#
         Checks
@@ -168,12 +172,26 @@ function Write-Menu {
     function Set-Color ([switch]$Inverted) {
         switch ($Inverted) {
             $true {
-                [System.Console]::ForegroundColor = $colorBackground
-                [System.Console]::BackgroundColor = $colorForeground
+                if($IsMacOS -or $IsLinux)
+                {
+                    Write-Host $script:emphasisColor -NoNewline
+                }
+                else
+                {
+                    [System.Console]::ForegroundColor = $script:colorBackground
+                    [System.Console]::BackgroundColor = $script:colorForeground
+                }
             }
             Default {
-                [System.Console]::ForegroundColor = $colorForeground
-                [System.Console]::BackgroundColor = $colorBackground
+                if($IsMacOS -or $IsLinux)
+                {
+                    Write-Host $script:defaultTokenColor -NoNewline
+                }
+                else
+                {
+                    [System.Console]::ForegroundColor = $script:colorForeground
+                    [System.Console]::BackgroundColor = $script:colorBackground
+                }
             }
         }
     }
@@ -240,12 +258,11 @@ function Write-Menu {
                     }
 
                     # Check if command contains nested menu
+                    $tempAction = 'Command'
                     if ($tempCommand.GetType().Name -eq 'Hashtable') {
                         $tempAction = 'Hashtable'
-                    } elseif ($tempCommand.Substring(0,1) -eq '@') {
+                    } elseif ($tempCommand -and $tempCommand.Substring(0,1) -eq '@') {
                         $tempAction = 'Invoke'
-                    } else {
-                        $tempAction = 'Command'
                     }
 
                     # Create object
@@ -254,6 +271,8 @@ function Write-Menu {
                         Command = $tempCommand
                         Selected = $false
                         onConfirm = $tempAction
+                        #onConfirm = 'Command'
+                        hashTable = $true
                     }; $i++
                 }; break
             }
@@ -361,7 +380,13 @@ function Write-Menu {
         # Invert colours if selected
         if ($lineHighlight) { Set-Color -Inverted }
         # Write page entry
-        [System.Console]::Write("".PadLeft($cfgPadding) + $pageEntry + "".PadRight($cfgPadding))
+        $message = [string]::Empty
+        if($lineHighlight -and ($IsMacOS -or $IsLinux))
+        {
+            $message+=$script:emphasisColor
+        }
+        $message += "".PadLeft($cfgPadding) + $pageEntry + "".PadRight($cfgPadding)
+        [System.Console]::Write($message)
         # Restore colours if selected
         if ($lineHighlight) { Set-Color }
         # Entry suffix
@@ -438,7 +463,7 @@ function Write-Menu {
 
         # Define selected entry
         $entrySelected = $menuEntries[($pageEntryFirst + $lineSelected)]
-
+        Write-Verbose "es: $($pageEntryFirst + $lineSelected); $($menuEntries.Count); $($entrySelected|Out-String)"
         # Check if key has function attached to it
         switch ($menuInput.Key) {
             # Exit / Return
@@ -569,6 +594,7 @@ function Write-Menu {
                     break
                 }
 
+                Write-Verbose "$($entrySelected.onConfirm)"
                 # Use onConfirm to process entry
                 switch ($entrySelected.onConfirm) {
                     # Return hashtable as nested menu
@@ -610,3 +636,7 @@ function Write-Menu {
         }
     } while ($inputLoop)
 }
+
+Export-ModuleMember -Function @(
+    'Write-Menu'
+)
